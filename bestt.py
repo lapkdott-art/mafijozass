@@ -9,10 +9,10 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
+from selenium.webdriver.chrome.service import Service
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import requests
-import asyncio
 
 # ==================== KONFIGURACIJA ====================
 TELEGRAM_TOKEN = "7164805897:AAF0tZhF5GagG5LL-Mzv_y52KfQP-hN8nTQ"
@@ -25,6 +25,9 @@ GAME_URL = "https://mafija.draugas.lt/map/-8~7?z=Lxg"
 # Prisijungimo duomenys
 USERNAME = "PrinceOfEurope"
 PASSWORD = "200203"
+
+# Chrome kelias (VPS)
+CHROME_PATH = "/usr/bin/google-chrome"  # Jei neveikia, pakeisti į /usr/bin/chromium-browser
 
 # ==================== GLOBALS ====================
 class BotState:
@@ -39,7 +42,7 @@ class BotState:
         self.stop_event = threading.Event()
         self.atm_hack_allowed = True
         self.paused = False
-        self.stop_time = None  # Kada sustoti
+        self.stop_time = None
 
 state = BotState()
 
@@ -288,7 +291,6 @@ def run_cycle(driver):
     log(f"✅ CIKLAS BAIGTAS (Iš viso: {state.click_count})")
 
 def check_stop_time():
-    """Tikrina ar atėjo laikas sustoti"""
     if state.stop_time and datetime.now() >= state.stop_time:
         log("⏰ Laikas baigėsi! Botas sustabdomas automatiškai.")
         send_telegram_message(f"⏰ <b>LAIKAS BAIGĖSI!</b>\nBotas veikė {state.click_count} ciklų.\n🚓 Kalėjimų: {state.jail_count}\n🏥 Ligoninių: {state.hospital_count}")
@@ -306,7 +308,8 @@ def run_mafija_bot():
     options = webdriver.ChromeOptions()
     
     # ============ VPS NUSTATYMAI (HEADLESS) ============
-    options.add_argument("--headless=new")  # NEMATOMAS REŽIMAS - BŪTINA VPS
+    options.binary_location = CHROME_PATH  # Nurodome Chrome kelią
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -335,14 +338,12 @@ def run_mafija_bot():
         
         while not state.stop_event.is_set():
             try:
-                # Tikriname ar laikas baigėsi
                 if check_stop_time():
                     break
                 
                 if not state.paused:
                     run_cycle(driver)
                 
-                # Ataskaita kas 30 sek
                 if time.time() - last_report > 30 and not state.paused:
                     duration = datetime.now() - state.start_time if state.start_time else 0
                     if state.stop_time:
@@ -718,7 +719,6 @@ def main():
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Komandos
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("stop", stop_command))
     app.add_handler(CommandHandler("pause", pause_command))
@@ -733,7 +733,6 @@ def main():
     app.add_handler(CommandHandler("relogin", relogin_command))
     app.add_handler(CommandHandler("help", help_command))
     
-    # Laiko komandos
     app.add_handler(CommandHandler("time_30", time_30_command))
     app.add_handler(CommandHandler("time_1h", time_1h_command))
     app.add_handler(CommandHandler("time_2h", time_2h_command))
@@ -743,7 +742,6 @@ def main():
     app.add_handler(CommandHandler("time_24h", time_24h_command))
     app.add_handler(CommandHandler("time_off", time_off_command))
     
-    # Mygtukų callback
     app.add_handler(CallbackQueryHandler(button_callback))
     
     app.run_polling(allowed_updates=["message", "callback_query"])
